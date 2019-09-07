@@ -25,14 +25,12 @@
 
 注解工具：Lombok，安装同名 Idea 插件。
 
-目前仍在更新中，希望小伙伴们能提 issue。
-
 ## 版本
 
 | 依赖         | 版本    |
 |:-----------:|--------:|
 | Java        | 1.8     |
-| SpringBoot  | 2.1.0   |
+| SpringBoot  | 2.1.7   |
 
 ## 快速开始
 
@@ -67,6 +65,8 @@ git clone https://github.com/Zoctan/spring-boot-api-seedling.git
 - [前端 Vue + 后端 Spring Boot 完全分离的用户角色管理模板](https://github.com/Zoctan/spring-boot-vue-admin)
 
 ## 更新记录
+
+2019-08-13 更新依赖版本，更换 Tomcat 容器为 Jetty，修复 RSA 密钥文件无法读取问题，添加文件上传控制器。
 
 2018-11-29 更新依赖版本，配置改为 yml ，完善单元测试，若干小修改。
 

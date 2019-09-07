@@ -1,19 +1,21 @@
 package com.zoctan.seedling.core.rsa;
 
+import com.zoctan.seedling.core.exception.RsaException;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.codec.binary.Base64;
 import org.springframework.core.io.DefaultResourceLoader;
+import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Component;
+import org.springframework.util.FileCopyUtils;
 
-import javax.annotation.Resource;
 import javax.crypto.Cipher;
-import java.io.DataInputStream;
-import java.io.File;
-import java.io.FileInputStream;
+import java.io.IOException;
 import java.security.*;
+import java.security.spec.InvalidKeySpecException;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.security.spec.X509EncodedKeySpec;
+import java.util.Optional;
 
 /**
  * RSA 工具
@@ -39,12 +41,9 @@ import java.security.spec.X509EncodedKeySpec;
 @Slf4j
 @Component
 public class RsaUtils {
+  @javax.annotation.Resource private RsaConfigurationProperties rsaProperties;
   private static final String ALGORITHM = "RSA";
-  private static final String publicKeyHead = "-----BEGIN PUBLIC KEY-----";
-  private static final String publicKeyTail = "-----END PUBLIC KEY-----";
-  private static final String privateKeyHead = "-----BEGIN PRIVATE KEY-----";
-  private static final String privateKeyTail = "-----END PRIVATE KEY-----";
-  @Resource private RsaConfigurationProperties rsaProperties;
+  private final ResourceLoader resourceLoader = new DefaultResourceLoader();
 
   public RsaUtils() {
     if (this.rsaProperties == null) {
@@ -59,8 +58,8 @@ public class RsaUtils {
    * @return 密钥对 公钥 keyPair.getPublic() 私钥 keyPair.getPrivate()
    * @throws Exception e
    */
-  public KeyPair genKeyPair(final int keyLength) throws Exception {
-    final KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(ALGORITHM);
+  public static KeyPair genKeyPair(final int keyLength) throws Exception {
+    final KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance(RsaUtils.ALGORITHM);
     keyPairGenerator.initialize(keyLength);
     return keyPairGenerator.generateKeyPair();
   }
@@ -73,8 +72,8 @@ public class RsaUtils {
    * @return 加密内容
    * @throws Exception e
    */
-  public byte[] encrypt(final byte[] content, final PublicKey publicKey) throws Exception {
-    final Cipher cipher = Cipher.getInstance(ALGORITHM);
+  public static byte[] encrypt(final byte[] content, final PublicKey publicKey) throws Exception {
+    final Cipher cipher = Cipher.getInstance(RsaUtils.ALGORITHM);
     cipher.init(Cipher.ENCRYPT_MODE, publicKey);
     return cipher.doFinal(content);
   }
@@ -87,7 +86,7 @@ public class RsaUtils {
    * @throws Exception e
    */
   public byte[] encrypt(final byte[] content) throws Exception {
-    return this.encrypt(content, this.loadPublicKey());
+    return RsaUtils.encrypt(content, this.loadPublicKey());
   }
 
   /**
@@ -98,8 +97,8 @@ public class RsaUtils {
    * @return 解密内容
    * @throws Exception e
    */
-  public byte[] decrypt(final byte[] content, final PrivateKey privateKey) throws Exception {
-    final Cipher cipher = Cipher.getInstance(ALGORITHM);
+  public static byte[] decrypt(final byte[] content, final PrivateKey privateKey) throws Exception {
+    final Cipher cipher = Cipher.getInstance(RsaUtils.ALGORITHM);
     cipher.init(Cipher.DECRYPT_MODE, privateKey);
     return cipher.doFinal(content);
   }
@@ -112,76 +111,79 @@ public class RsaUtils {
    * @throws Exception e
    */
   public byte[] decrypt(final byte[] content) throws Exception {
-    return this.decrypt(content, this.loadPrivateKey());
+    return RsaUtils.decrypt(content, this.loadPrivateKey());
   }
   /**
-   * 加载pem格式的公钥
+   * 加载pem格式X509编码的公钥
    *
-   * @param pem 公钥文件路径
    * @return 公钥
    */
-  public PublicKey loadPublicKey(final String pem) {
+  public PublicKey loadPublicKey() throws RsaException {
+    final byte[] decoded;
+    if (this.rsaProperties.isUseFile()) {
+      decoded =
+          this.loadAndReplaceAndDecodeByBase64(
+              this.rsaProperties.getPublicKeyPath(),
+              this.rsaProperties.getPublicKeyHead(),
+              this.rsaProperties.getPublicKeyTail());
+    } else {
+      decoded = Base64.decodeBase64(this.rsaProperties.getPublicKey());
+    }
+    final X509EncodedKeySpec spec = new X509EncodedKeySpec(decoded);
     try {
-      final byte[] decoded = this.replaceAndBase64Decode(pem, publicKeyHead, publicKeyTail);
-      final X509EncodedKeySpec spec = new X509EncodedKeySpec(decoded);
-      final KeyFactory keyFactory = KeyFactory.getInstance(ALGORITHM);
+      final KeyFactory keyFactory = KeyFactory.getInstance(RsaUtils.ALGORITHM);
       return keyFactory.generatePublic(spec);
-    } catch (final Exception e) {
-      log.error("==> RSA Utils Exception: {}", e.getMessage());
+    } catch (final NoSuchAlgorithmException | InvalidKeySpecException e) {
+      RsaUtils.log.error("==> {}", e.getMessage());
       return null;
     }
-  }
-
-  /**
-   * 加载配置文件中设置的公钥
-   *
-   * @return 公钥
-   */
-  public PublicKey loadPublicKey() {
-    return this.loadPublicKey(this.rsaProperties.getPublicKeyPath());
   }
 
   /**
    * 加载pem格式PKCS8编码的私钥
    *
-   * @param pem 私钥文件路径
    * @return 私钥
    */
-  public PrivateKey loadPrivateKey(final String pem) {
+  public PrivateKey loadPrivateKey() throws RsaException {
+    final byte[] decoded;
+    if (this.rsaProperties.isUseFile()) {
+      decoded =
+          this.loadAndReplaceAndDecodeByBase64(
+              this.rsaProperties.getPrivateKeyPath(),
+              this.rsaProperties.getPrivateKeyHead(),
+              this.rsaProperties.getPrivateKeyTail());
+    } else {
+      decoded = Base64.decodeBase64(this.rsaProperties.getPrivateKey());
+    }
+    final PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
     try {
-      final byte[] decoded = this.replaceAndBase64Decode(pem, privateKeyHead, privateKeyTail);
-      final PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(decoded);
-      final KeyFactory keyFactory = KeyFactory.getInstance(ALGORITHM);
+      final KeyFactory keyFactory = KeyFactory.getInstance(RsaUtils.ALGORITHM);
       return keyFactory.generatePrivate(spec);
-    } catch (final Exception e) {
-      log.error("==> RSA Utils Exception: {}", e.getMessage());
+    } catch (final NoSuchAlgorithmException | InvalidKeySpecException e) {
+      RsaUtils.log.error("==> {}", e.getMessage());
       return null;
     }
   }
 
   /**
-   * 加载配置文件中设置的私钥
+   * 加载文件后替换头和尾并解密
    *
-   * @return 私钥
+   * @return 文件字节
    */
-  public PrivateKey loadPrivateKey() {
-    return this.loadPrivateKey(this.rsaProperties.getPrivateKeyPath());
-  }
-
-  private byte[] replaceAndBase64Decode(
-      final String file, final String headReplace, final String tailReplace) throws Exception {
-    // 从 classpath:resources/ 中加载资源
-    final ResourceLoader loader = new DefaultResourceLoader();
-    final File f = loader.getResource(file).getFile();
-    final FileInputStream fis = new FileInputStream(f);
-    final DataInputStream dis = new DataInputStream(fis);
-    final byte[] keyBytes = new byte[(int) f.length()];
-    dis.readFully(keyBytes);
-    dis.close();
-
-    final String keyPEM =
-        new String(keyBytes).replace(headReplace, "").trim().replace(tailReplace, "").trim();
-
-    return Base64.decodeBase64(keyPEM);
+  private byte[] loadAndReplaceAndDecodeByBase64(
+      final String keyPath, final String headReplace, final String tailReplace)
+      throws RsaException {
+    final Resource resource =
+        Optional.ofNullable(keyPath).map(this.resourceLoader::getResource).get();
+    if (!resource.exists()) {
+      throw new RsaException("==> 密钥不存在");
+    }
+    try {
+      final String key = new String(FileCopyUtils.copyToByteArray(resource.getInputStream()));
+      return Base64.decodeBase64(
+          key.replace(headReplace, "").trim().replace(tailReplace, "").trim());
+    } catch (final IOException e) {
+      throw new RsaException("==> 密钥读取异常: {}", e);
+    }
   }
 }

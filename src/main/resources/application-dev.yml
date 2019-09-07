@@ -6,6 +6,10 @@ spring:
     restart:
       # 修改代码后自动重启
       enabled: true
+  servlet:
+    multipart:
+      max-file-size: 20MB
+      max-request-size: 20MB
   # 数据源（应该全部加密）
   datasource:
     # 连接，注意各个配置，尤其是要一次性执行多条 SQL 时，要 allowMultiQueries=true
@@ -15,12 +19,12 @@ spring:
     # 密码 root
     password: MyEnc({eCOS8Sk9b/kWt2FK0QFA9g==})
     # 驱动类
-    driver-class-name: com.mysql.cj.jdbc.Driver
+    driver-class-name: MyEnc({0COuoMacyjuWsmPnBUH9Zr5yWx1i1lZa+B/N0uwIJVyKwI7lpV1emg==})
   cache:
     # 缓存类型
     type: redis
-    # key 前缀
     redis:
+      # key 前缀
       key-prefix: seedlingDev
       # 过期时间
       time-to-live: 60s
@@ -43,6 +47,7 @@ spring:
       # 连接池中的最小空闲连接
       min-idle: 0
 
+
 logging:
   # 日志级别
   level.com.zoctan.seedling: debug
@@ -57,3 +62,8 @@ jwt:
   header: Authorization
   # token 类型
   token-type: Bearer
+
+upload:
+  local-path: /tmp/
+  min: 1KB
+  max: 10MB
